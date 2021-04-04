@@ -97,9 +97,6 @@ def parse_command(cmd):
         print("")
     except Signal_TSTOP:
         print("PySH: suspended `{}'".format(cmd))
-    except Exception as e:
-        print(e)
-        print(cmd)
 
 def prompt():
     cmd = ""
@@ -116,17 +113,20 @@ def prompt():
         while line and line[0] in " \t":
             cmd += "\n{}".format(line)
             line = input("...")
-        exec(cmd)
+        try:
+            exec(cmd)
+        except (NameError,TypeError,SyntaxError) as e:
+            print(e)
         cmd = line
     if cmd:
         try:
             exec(cmd)
-        except (NameError,SyntaxError) as e:
+        except (NameError,TypeError,SyntaxError) as e:
             try:
                 parse_command(cmd)
             except FileNotFoundError:
-                print("That was neither a valid python snippet, nor a valid command.")
-                print(e)
+                print("That was neither a valid python snippet, nor a valid command:")
+                print("{}: {}".format(type(e).__name__,e))
                 print("`{}': no such file or directory".format(cmd.split(' ')[0]))
 
 def main():
