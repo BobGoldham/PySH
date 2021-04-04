@@ -32,6 +32,7 @@ def fg(index=0):
         try:
             os.kill(job.pid, signal.SIGCONT)
             job.communicate()
+            LAST_RETURN = job.returncode
         except KeyboardInterrupt:
             os.kill(job.pid, signal.SIGKILL)
         except Signal_TSTOP:
@@ -42,13 +43,22 @@ def fg(index=0):
         fg(index-1)
         jobs.put(job)
 
-builtins = {"exit": exit, "cd": cd}
+def alias(pat="", *subst):
+    if not pat:
+        [ print("{}={}".format(k, v)) for (k,v) in aliases]
+    elif not subst and pat in aliases:
+        print("{}={}".format(pat, aliases[pat]))
+    else:
+        aliases[pat] = ' '.join([*subst])
+
+builtins = {"exit": exit, "cd": cd, "alias": alias}
+aliases = {}
 
 HOME = str(Path.home())
-if "PS1" in os.environ:
-    PS1 = os.environ["PS1"]
-else:
-    PS1 = "%B%d -> %b"
+
+PS1 = "%B%d-> %b"
+
+LAST_RETURN = 0
 
 class Signal_TSTOP(Exception):
     """Ctrl+Z was pressed"""
@@ -56,10 +66,16 @@ class Signal_TSTOP(Exception):
 
 def handle_sigtstp(signum, frame):
     if frame.f_code == execute_command:
-        job = frame.f_locals["process"]
+        job = frame.f_locals()["process"]
         os.kill(job.pid, signal.SIGTSTP)
         jobs.put(job)
     raise Signal_TSTOP
+
+def substitute_aliases(cmd):
+    tmpcmd = cmd
+    for key in aliases:
+        tmpcmd = tmpcmd.replace(key, aliases[key])
+    return tmpcmd
 
 def handle_builtins(cmd):
     cmdname, *cmdargs = cmd.split(' ')
@@ -93,43 +109,60 @@ def parse_command(cmd):
         cmd = subcommands[-1].strip()
         process = execute_command(cmd, stdin=tmppipe)
         process.wait()
+        LAST_RETURN = process.returncode
     except KeyboardInterrupt:
         print("")
     except Signal_TSTOP:
         print("PySH: suspended `{}'".format(cmd))
 
-def prompt():
-    cmd = ""
-    _prompt = parse_PS1(PS1)
-    cmd = input(_prompt)
-    try:
-        if handle_builtins(cmd):
-            return
-    except TypeError:
-        print("Invalid arguments to builtin command `{}'".format(cmd.split(' ')[0]))
-        return
-    while cmd and cmd.rstrip()[-1] == ':':
-        line = input("...")
-        while line and line[0] in " \t":
-            cmd += "\n{}".format(line)
-            line = input("...")
+def parse_line(line):
+    if line and line[-1] == ':':
+        parse_line.block = line
+    elif line and line[0] in " \t":
+        parse_line.block += line
+    elif parse_line.block:
         try:
-            exec(cmd)
-        except (NameError,TypeError,SyntaxError) as e:
+            exec(parse_line.block, globals())
+        except Exception as e:
             print(e)
-        cmd = line
-    if cmd:
-        try:
-            exec(cmd)
-        except (NameError,TypeError,SyntaxError) as e:
+        finally:
+            parse_line.block = ""
+        parse_line(line)
+    else:
+        if not handle_builtins(line):
+            line = substitute_aliases(line)
             try:
-                parse_command(cmd)
-            except FileNotFoundError:
-                print("That was neither a valid python snippet, nor a valid command:")
-                print("{}: {}".format(type(e).__name__,e))
-                print("`{}': no such file or directory".format(cmd.split(' ')[0]))
+                exec(line, globals())
+            except (NameError,TypeError,SyntaxError,AttributeError) as e:
+                try:
+                    parse_command(line)
+                except FileNotFoundError:
+                    print("PySH error: `{}' is not a valid command or python snippet".format(line))
+                    print("{}: {}".format(type(e).__name__, e))
+                    print("`{}': no such file or directory".format(line.split(' ')[0]))
+
+parse_line.block = ""
+
+def prompt():
+    line = ""
+    if parse_line.block:
+        _prompt = "... "
+    else:
+        _prompt = parse_PS1(PS1)
+    line = input(_prompt)
+    parse_line(line)
 
 def main():
+    if os.path.exists("{}/.pyshrc".format(HOME)):
+        with open("{}/.pyshrc".format(HOME)) as pyshrc:
+            block = ""
+            i = 0
+            for line in pyshrc:
+                i += 1
+                line = line.rstrip()
+                parse_line(line)
+            parse_line("")
+
     while True:
         try:
             prompt()
