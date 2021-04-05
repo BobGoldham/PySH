@@ -5,14 +5,13 @@ import os
 import getpass
 import socket
 import signal
-import queue
 import subprocess
 import readline
 
 from pathlib import Path
 from PS1 import parse_PS1
 
-jobs = queue.LifoQueue()
+jobs = list()
 
 def cd(path):
     os.chdir(path)
@@ -29,24 +28,24 @@ def fg(index=0):
     if index >= len(jobs):
         raise TypeError("Job {} does not exist.".format(index))
     if index == 0:
-        job = jobs.get()
-        try:
-            os.kill(job.pid, signal.SIGCONT)
-            job.communicate()
-            LAST_RETURN = job.returncode
-        except KeyboardInterrupt:
-            os.kill(job.pid, signal.SIGKILL)
-        except Signal_TSTOP:
-            os.kill(job.pid, signal.SIGSTOP)
-            jobs.put(job)
+        job = jobs[-1]
+        jobs = jobs[:len(jobs)-1]
     else:
-        job = jobs.get()
-        fg(index-1)
-        jobs.put(job)
+        job = jobs[i]
+        jobs = jobs[:i] + jobs[i+1:]
+    try:
+        os.kill(job.pid, signal.SIGCONT)
+        job.communicate()
+        LAST_RETURN = job.returncode
+    except KeyboardInterrupt:
+        os.kill(job.pid, signal.SIGKILL)
+    except Signal_TSTOP:
+        os.kill(job.pid, signal.SIGSTOP)
+        jobs += [job]
 
 def alias(pat="", *subst):
     if not pat:
-        [ print("{}={}".format(k, v)) for (k,v) in aliases]
+        [print("{}={}".format(k, v)) for (k,v) in aliases]
     elif not subst and pat in aliases:
         print("{}={}".format(pat, aliases[pat]))
     else:
@@ -66,10 +65,6 @@ class Signal_TSTOP(Exception):
     pass
 
 def handle_sigtstp(signum, frame):
-    if frame.f_code == execute_command:
-        job = frame.f_locals()["process"]
-        os.kill(job.pid, signal.SIGTSTP)
-        jobs.put(job)
     raise Signal_TSTOP
 
 def substitute_aliases(cmd):
@@ -121,7 +116,9 @@ def parse_command(cmd):
     except KeyboardInterrupt:
         print("")
     except Signal_TSTOP:
-        print("\nPySH: suspended  {}".format(cmd))
+        os.kill(process.pid, signal.SIGSTOP)
+        jobs += [process]
+        print("\nPySH: suspended `{}'".format(cmd))
 
 def parse_line(line):
     if line and line[-1] == ':':
