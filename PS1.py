@@ -13,8 +13,8 @@ def parse_PS1(PS1):
         "%u": "\33[0m",
         "%S": "\33{7m",
         "%s": "\33[0m",
-        "%M": socket.getfqdn(),
-        "%m": socket.gethostname(),
+        "%M": socket.gethostname(),
+        "%m": socket.gethostname().split(".")[0],
         "%n": getpass.getuser(),
         "%#": "%" if os.getuid() else "#", # This should technically check for uid=0 OR POSIX.1e capabilities
         "%d": os.getcwd(),

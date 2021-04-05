@@ -7,6 +7,7 @@ import socket
 import signal
 import queue
 import subprocess
+import readline
 
 from pathlib import Path
 from PS1 import parse_PS1
@@ -51,7 +52,7 @@ def alias(pat="", *subst):
     else:
         aliases[pat] = ' '.join([*subst])
 
-builtins = {"exit": exit, "cd": cd, "alias": alias}
+builtins = {"exit": sys.exit, "cd": cd, "alias": alias}
 aliases = {}
 
 HOME = str(Path.home())
@@ -76,6 +77,13 @@ def substitute_aliases(cmd):
     for key in aliases:
         tmpcmd = tmpcmd.replace(key, aliases[key])
     return tmpcmd
+
+def inline_substitution(cmd):
+    if "!!" in cmd:
+        cmd = cmd.replace("!!", readline.get_history_item(readline.get_current_history_length()-1))
+        print(cmd)
+        return cmd # TODO: This is technically unneccessary, but I'm leaving this here for now. Might need it in the future
+    return cmd
 
 def handle_builtins(cmd):
     cmdname, *cmdargs = cmd.split(' ')
@@ -113,7 +121,7 @@ def parse_command(cmd):
     except KeyboardInterrupt:
         print("")
     except Signal_TSTOP:
-        print("PySH: suspended `{}'".format(cmd))
+        print("\nPySH: suspended  {}".format(cmd))
 
 def parse_line(line):
     if line and line[-1] == ':':
@@ -131,6 +139,7 @@ def parse_line(line):
     else:
         if not handle_builtins(line):
             line = substitute_aliases(line)
+            line = inline_substitution(line)
             try:
                 exec(line, globals())
             except (NameError,TypeError,SyntaxError,AttributeError) as e:
