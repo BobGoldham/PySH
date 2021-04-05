@@ -79,10 +79,11 @@ def substitute_aliases(cmd):
     return tmpcmd
 
 def inline_substitution(cmd):
+    if "~" in cmd:
+        cmd = cmd.replace("~", HOME)
     if "!!" in cmd:
         cmd = cmd.replace("!!", readline.get_history_item(readline.get_current_history_length()-1))
         print(cmd)
-        return cmd # TODO: This is technically unneccessary, but I'm leaving this here for now. Might need it in the future
     return cmd
 
 def handle_builtins(cmd):
