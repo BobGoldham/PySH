@@ -79,8 +79,15 @@ def substitute_aliases(cmd):
     return tmpcmd
 
 def inline_substitution(cmd):
-    if "~" in cmd:
-        cmd = cmd.replace("~", HOME)
+    cmd, *substrs = cmd.split(" ")
+    if cmd and cmd[0] == "~":
+        cmd = "{}{}".format(HOME, cmd[1:])
+    for substr in substrs:
+        if substr and substr[0] == "~":
+            _ = "{}{}".format(HOME, substr[1:])
+        else:
+            _ = substr
+        cmd = " ".join([cmd, _])
     if "!!" in cmd:
         cmd = cmd.replace("!!", readline.get_history_item(readline.get_current_history_length()-1))
         print(cmd)
